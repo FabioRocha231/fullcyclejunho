@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"github.com/FabioRocha231/fullcyclejunho/internal/infra/database"
 	"github.com/FabioRocha231/fullcyclejunho/internal/usecase"
+	"github.com/FabioRocha231/fullcyclejunho/pkg/rabbitmq"
 	_ "github.com/mattn/go-sqlite3"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"log"
@@ -21,22 +22,23 @@ func main() {
 
 	newCalculateFinalPrice := usecase.NewCalculateFinalPrice(orderRepository)
 
-	input := usecase.OrderInput{
-		ID:    "123",
-		Price: 10,
-		Tax:   5,
-	}
+	ch, err := rabbitmq.OpenChanel()
 
-	orderOutput, err := newCalculateFinalPrice.Execute(input)
 	if err != nil {
 		panic(err)
 	}
 
-	log.Println(orderOutput)
+	defer ch.Close()
+
+	msgRabbitmqChannel := make(chan amqp.Delivery)
+
+	go rabbitmq.Consume(ch, msgRabbitmqChannel)
+
+	rabbitmqWorker(msgRabbitmqChannel, newCalculateFinalPrice)
 }
 
-func rabbitmqWorker(msgChan chan amqp.Delivery, uc usecase.CalculateFinalPrice) {
-	log.Println("Saving rabbitmq")
+func rabbitmqWorker(msgChan chan amqp.Delivery, uc *usecase.CalculateFinalPrice) {
+	log.Println("Starting rabbitmq")
 
 	for msg := range msgChan {
 		var input usecase.OrderInput
